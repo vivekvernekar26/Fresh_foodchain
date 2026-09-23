@@ -4,121 +4,80 @@ import { useEffect, useRef, useState } from "react";
 import * as engine from "@/lib/simulation.js";
 import type { Batch, AlertEvent } from "@/lib/types";
 
-// ── Engine casts (lib/simulation.js is deliberately plain-JS) ────────────
-const createBatch  = engine.createBatch  as unknown as (now: number) => Batch;
-const stepFleet    = engine.stepFleet    as unknown as (
+// ── Engine casts (lib/simulation.js is plain JS) ─────────────────────────
+const createBatch = engine.createBatch as unknown as (now: number) => Batch;
+const stepFleet = engine.stepFleet as unknown as (
   batches: Batch[],
   now: number,
   dtHours: number,
   tracking: { statusById: Map<number, string>; fraudFlagged: Set<number> }
 ) => { batches: Batch[]; events: AlertEvent[]; delivered: number; spoiled: number };
-const PRODUCTS     = engine.PRODUCTS as Record<
+const forceAnomaly = engine.forceAnomaly as unknown as (batch: Batch) => void;
+const computeRisk = engine.computeRisk as unknown as (batch: Batch) => Batch["risk"];
+const detectFraud = engine.detectFraud as unknown as (batch: Batch) => Batch["fraud"];
+const PRODUCTS_MAP = engine.PRODUCTS as Record<
   string,
   { label: string; emoji: string; idealTemp: number; idealHumidity: number; idealGas: number; baselineShelfLifeHours: number }
 >;
-const computeRisk  = engine.computeRisk  as unknown as (batch: Batch) => Batch["risk"];
-const detectFraud  = engine.detectFraud  as unknown as (batch: Batch) => Batch["fraud"];
-const forceAnomaly = engine.forceAnomaly as unknown as (batch: Batch) => void;
 
-import RouteMap    from "@/components/RouteMap";
-import AnomalyPanel from "@/components/AnomalyPanel";
-import AlertsFeed  from "@/components/AlertsFeed";
-import Controls    from "@/components/Controls";
+import RouteMap from "@/components/RouteMap";
+import AlertsFeed from "@/components/AlertsFeed";
+import Controls from "@/components/Controls";
+import PipelineBoard from "@/components/PipelineBoard";
+import BatchDetail from "@/components/BatchDetail";
+import BatchPicker from "@/components/BatchPicker";
+import NewBatchModal from "@/components/NewBatchModal";
+import StatsBar from "@/components/StatsBar";
+import AIAnalysisModal from "@/components/AIAnalysisModal";
 
 // ── Simulation constants ──────────────────────────────────────────────────
-const TICK_MS        = 1000;
+const TICK_MS = 1000;
 const HOURS_PER_TICK = 0.5;
-/** Scripted anomaly fires at this simulated time (hours). At 1× speed = 10 ticks = 10 s. */
-const ANOMALY_AT     = 5;
 
-/** Build a pinned batch: overrides product, stage, and sensor readings. */
-function makeBatch(
-  product: "milk" | "meat" | "fruit",
-  stage: Batch["stage"],
-  dwellTarget: number,
-): Batch {
-  const b = createBatch(0);
-  const cfg = PRODUCTS[product];
-  b.product        = product;
-  b.stage          = stage;
-  b.stageEnteredAt = 0;
-  b.dwellTarget    = dwellTarget;
-  b.temp           = cfg.idealTemp;
-  b.humidity       = cfg.idealHumidity;
-  b.gas            = cfg.idealGas;
-  (b as unknown as Record<string,unknown>).spoilagePoints = 0;
-  b.history        = [{ t: 0, temp: b.temp, humidity: b.humidity, gas: b.gas }];
-  b.risk           = computeRisk(b);
-  b.fraud          = detectFraud(b);
-  return b;
-}
-
-// ── Stats bar (inline — simpler than a separate component) ────────────────
-function StatsBar({
-  batches,
-  delivered,
-  anomalyFired,
-  now,
-}: {
-  batches: Batch[];
-  delivered: number;
-  anomalyFired: boolean;
-  now: number;
-}) {
-  const atRisk = batches.filter(b => b.risk.status !== "ok").length;
-  const stats = [
-    { icon: "🚚", label: "Batches in route",    value: batches.length,             tone: "text-slate-200" },
-    { icon: "⚠️", label: "At risk now",          value: atRisk,                     tone: atRisk > 0 ? "text-amber-400" : "text-slate-400" },
-    { icon: "🚨", label: "Anomalies detected",   value: anomalyFired ? 1 : 0,       tone: anomalyFired ? "text-red-400" : "text-slate-500" },
-    { icon: "✅", label: "Delivered fresh",       value: delivered,                  tone: "text-emerald-400" },
-    { icon: "⏱",  label: "Sim time",             value: `${now.toFixed(1)}h`,       tone: "text-sky-400" },
-  ];
-  return (
-    <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
-      {stats.map(s => (
-        <div
-          key={s.label}
-          className="rounded-xl p-3 transition-all duration-300"
-          style={{ background: "rgba(11,22,34,0.8)", border: "1px solid rgba(255,255,255,0.07)" }}
-        >
-          <div className="flex items-center gap-2 mb-0.5">
-            <span className="text-base leading-none">{s.icon}</span>
-            <span className={`text-xl font-bold tabular-nums ${s.tone}`}>{s.value}</span>
-          </div>
-          <div className="text-[10px] text-slate-600 leading-tight">{s.label}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ── Main page ─────────────────────────────────────────────────────────────
 export default function Home() {
-  const [batches,    setBatches]    = useState<Batch[]>([]);
-  const [alerts,     setAlerts]     = useState<AlertEvent[]>([]);
-  const [running,    setRunning]    = useState(true);
-  const [speed,      setSpeed]      = useState(1);
-  const [now,        setNow]        = useState(0);
-  const [delivered,  setDelivered]  = useState(0);
+  const [batches, setBatches] = useState<Batch[]>([]);
+  const [alerts, setAlerts] = useState<AlertEvent[]>([]);
+  const [running, setRunning] = useState(true);
+  const [speed, setSpeed] = useState(1);
+  const [now, setNow] = useState(0);
+  const [delivered, setDelivered] = useState(0);
+  const [spoiled, setSpoiled] = useState(0);
+  const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null);
+  const [showPicker, setShowPicker] = useState(false);
+  const [showNewBatchModal, setShowNewBatchModal] = useState(false);
+  const [activeRightTab, setActiveRightTab] = useState<"alerts" | "detail">("alerts");
+  const [aiModalBatch, setAiModalBatch] = useState<Batch | null>(null);
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const [resolvedBatchIds, setResolvedBatchIds] = useState<Set<number>>(new Set());
 
-  // Anomaly state
-  const [anomalyFired,   setAnomalyFired]   = useState(false);
-  const [anomalyBatchId, setAnomalyBatchId] = useState<number | null>(null);
-  const [showAIPanel,    setShowAIPanel]    = useState(false);
-
-  const nowRef           = useRef(0);
-  const anomalyFiredRef  = useRef(false);   // ref-mirror for inside setState callback
-  const trackingRef      = useRef({
-    statusById:   new Map<number, string>(),
+  const nowRef = useRef(0);
+  const trackingRef = useRef({
+    statusById: new Map<number, string>(),
     fraudFlagged: new Set<number>(),
   });
 
-  // ── Initialise 3 pinned batches (client-side only to avoid hydration mismatch) ──
+  // ── Init fleet on client only (default: exactly 3 batches distributed cleanly) ─────
   useEffect(() => {
-    const milk  = makeBatch("milk",  "Farm",    12); // stays in Farm ~12h
-    const fruit = makeBatch("fruit", "Storage", 14); // stays in Storage ~14h
-    const meat  = makeBatch("meat",  "Truck",   22); // stays in Truck well past anomaly (t=5h)
-    setBatches([milk, fruit, meat]);
+    const defaults: Array<{ product: "milk" | "meat" | "fruit"; stage: Batch["stage"] }> = [
+      { product: "milk",  stage: "Farm" },
+      { product: "meat",  stage: "Truck" },
+      { product: "fruit", stage: "Storage" },
+    ];
+    const fleet: Batch[] = defaults.map((d) => {
+      const cfg = PRODUCTS_MAP[d.product];
+      const b = createBatch(0);
+      b.product = d.product;
+      b.stage = d.stage;
+      b.temp = cfg.idealTemp + (Math.random() - 0.5);
+      b.humidity = cfg.idealHumidity + (Math.random() * 4 - 2);
+      b.gas = cfg.idealGas + (Math.random() * 2 - 1);
+      b.history = [{ t: 0, temp: b.temp, humidity: b.humidity, gas: b.gas }];
+      b.risk = computeRisk(b);
+      b.fraud = detectFraud(b);
+      return b;
+    });
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setBatches(fleet);
   }, []);
 
   // ── Tick loop ──────────────────────────────────────────────────────────
@@ -128,165 +87,343 @@ export default function Home() {
       nowRef.current += HOURS_PER_TICK * speed;
       setNow(nowRef.current);
 
-      setBatches(prev => {
-        // ── Scripted anomaly trigger — fires exactly once at ANOMALY_AT ──
-        if (nowRef.current >= ANOMALY_AT && !anomalyFiredRef.current) {
-          const meatBatch = prev.find(b => b.product === "meat" && b.stage === "Truck");
-          if (meatBatch) {
-            anomalyFiredRef.current = true;
-            forceAnomaly(meatBatch); // plants forcedSpikeNextTick flag
-
-            setAnomalyFired(true);
-            setAnomalyBatchId(meatBatch.id);
-
-            // Exactly 3 hardcoded alerts for this one incident — no general noise
-            const t = nowRef.current;
-            const id = meatBatch.id;
-            setAlerts([
-              {
-                id: `alert-breach-${id}`,
-                time: t,
-                text: `🚨 Cold Chain Breach — 🥩 Meat Batch #${id}: temperature jumped from 2.1°C to 18.3°C during Truck transit.`,
-                severity: "critical" as const,
-              },
-              {
-                id: `alert-risk-${id}`,
-                time: t - 0.5,
-                text: `⚠️ Risk Escalated to CRITICAL — 🥩 Meat Batch #${id}: spoilage risk at 82%. Refrigeration fault suspected.`,
-                severity: "critical" as const,
-              },
-              {
-                id: `alert-action-${id}`,
-                time: t - 1.0,
-                text: `📋 Action Required — 🥩 Meat Batch #${id}: quarantine recommended. Click ⚠️ to open AI Analyser for full diagnosis.`,
-                severity: "warning" as const,
-              },
-            ]);
-          }
-        }
-
+      setBatches((prev) => {
         const result = stepFleet(prev, nowRef.current, HOURS_PER_TICK * speed, trackingRef.current);
-        // Suppress general simulation events — only the 3 scripted anomaly alerts are shown
-        if (result.delivered) {
-          setDelivered(d => d + result.delivered);
+
+        if (result.events.length > 0) {
+          setAlerts((existing) => [...result.events, ...existing].slice(0, 50));
         }
+
+        if (result.delivered) setDelivered((d) => d + result.delivered);
+        if (result.spoiled) setSpoiled((s) => s + result.spoiled);
+
         return result.batches;
       });
     }, TICK_MS);
     return () => clearInterval(id);
   }, [running, speed, batches.length]);
 
+  // Derived values
+  const inTransitCount = batches.filter((b) => b.stage === "Truck").length;
+  const selectedBatch = batches.find((b) => b.id === selectedBatchId) ?? null;
+  const criticalBatches = batches.filter(
+    (b) => b.risk.status === "critical" && !resolvedBatchIds.has(b.id)
+  );
+
+  // Handlers
+  function handleMarkAnomalyResolved(batchId: number, diagnosis: import("@/lib/types").LLMAnalysisResult) {
+    setResolvedBatchIds((prev) => {
+      const next = new Set(prev);
+      next.add(batchId);
+      return next;
+    });
+
+    setAlerts((prev) =>
+      prev.map((a) => {
+        const match = a.text.match(/#(\d+)/);
+        const targetId = a.batchId ?? (match ? parseInt(match[1], 10) : null);
+        if (targetId === batchId) {
+          return {
+            ...a,
+            resolved: true,
+            resolvedAt: nowRef.current,
+            diagnosis,
+          };
+        }
+        return a;
+      })
+    );
+  }
+
+  function handleBatchClick(id: number) {
+    if (selectedBatchId === id) {
+      setSelectedBatchId(null);
+      setActiveRightTab("alerts");
+    } else {
+      setSelectedBatchId(id);
+      setActiveRightTab("detail");
+    }
+  }
+
+  function handleInjectAnomaly(batch: Batch) {
+    forceAnomaly(batch);
+    const cfg = PRODUCTS_MAP[batch.product];
+    const injectAlert: AlertEvent = {
+      id: `inject-${batch.id}-${Date.now()}`,
+      time: nowRef.current,
+      text: `⚡ Forced refrigeration breakdown on ${cfg.emoji} ${cfg.label} Batch #${batch.id}. Thermal readings will spike next tick.`,
+      severity: "warning",
+    };
+    setAlerts((prev) => [injectAlert, ...prev].slice(0, 50));
+  }
+
+  function handleCreateCustomBatch(
+    product: "milk" | "meat" | "fruit" | "vegetable",
+    stage: Batch["stage"]
+  ) {
+    const cfg = PRODUCTS_MAP[product];
+    const newBatch = createBatch(nowRef.current);
+    newBatch.product = product;
+    newBatch.stage = stage;
+    newBatch.temp = cfg.idealTemp + (Math.random() - 0.5);
+    newBatch.humidity = cfg.idealHumidity + (Math.random() * 4 - 2);
+    newBatch.gas = cfg.idealGas + (Math.random() * 2 - 1);
+    newBatch.history = [
+      { t: nowRef.current, temp: newBatch.temp, humidity: newBatch.humidity, gas: newBatch.gas },
+    ];
+    newBatch.risk = computeRisk(newBatch);
+    newBatch.fraud = detectFraud(newBatch);
+
+    setBatches((prev) => [...prev, newBatch]);
+    setSelectedBatchId(newBatch.id);
+    setActiveRightTab("detail");
+
+    const addAlert: AlertEvent = {
+      id: `add-${newBatch.id}-${Date.now()}`,
+      time: nowRef.current,
+      text: `✅ New cargo dispatched: ${cfg.emoji} ${cfg.label} Batch #${newBatch.id} entered ${stage} stage.`,
+      severity: "ok",
+    };
+    setAlerts((prev) => [addAlert, ...prev].slice(0, 50));
+  }
+
   return (
     <div
-      className="min-h-screen"
+      className="min-h-screen relative"
       style={{
         background: `
-          radial-gradient(ellipse at 15% 10%, rgba(132,204,22,0.04) 0%, transparent 50%),
-          radial-gradient(ellipse at 85% 90%, rgba(56,189,248,0.04) 0%, transparent 50%),
-          var(--bg-base)
+          radial-gradient(ellipse at 10% 5%, rgba(16, 185, 129, 0.06) 0%, transparent 45%),
+          radial-gradient(ellipse at 90% 15%, rgba(6, 182, 212, 0.06) 0%, transparent 45%),
+          radial-gradient(ellipse at 50% 95%, rgba(139, 92, 246, 0.04) 0%, transparent 55%),
+          #06090e
         `,
       }}
     >
-      <div className="mx-auto flex min-h-screen max-w-screen-xl flex-col gap-4 p-4 lg:p-5">
+      <div className="mx-auto flex min-h-screen max-w-[1600px] flex-col gap-4 p-3.5 sm:p-5 lg:gap-5">
+        {/* ── Top Header Bar ── */}
+        <header className="rounded-xl bg-[#0f1420] p-4 flex flex-wrap items-center justify-between gap-4 border border-slate-800 shadow-xl">
+          {/* Logo & Subtitle */}
+          <div className="flex items-center gap-3">
+            <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+              <span className="text-xl">🌿</span>
+              <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+              </span>
+            </div>
 
-        {/* ── Header ── */}
-        <header
-          className="flex flex-wrap items-center justify-between gap-4 rounded-2xl px-5 py-4"
-          style={{
-            background: "rgba(11,22,34,0.9)",
-            border: "1px solid rgba(255,255,255,0.08)",
-            backdropFilter: "blur(12px)",
-          }}
-        >
-          <div>
-            <h1 className="text-xl font-extrabold text-slate-100 tracking-tight">
-              🌾 FreshChain
-              <span className="ml-2 text-sm font-medium text-slate-500">AI Supply Chain Integrity</span>
-            </h1>
-            <p className="text-xs text-slate-700 mt-0.5">
-              3 live batches · Farm → Storage → Truck → Warehouse → Shop → Customer
-            </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg sm:text-xl font-black tracking-tight text-white">
+                  FreshChain<span className="text-emerald-400">OS</span>
+                </h1>
+                <span className="hidden sm:inline text-[10px] font-mono-data font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                  AI COLD-CHAIN v2.4
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 font-mono-data">
+                Sim Time: <span className="text-slate-200 font-semibold">T+{now.toFixed(1)}h</span> · <span className="text-slate-200 font-semibold">{inTransitCount}</span> in Transit · <span className="text-slate-200 font-semibold">{batches.length}</span> Total Fleet
+              </p>
+            </div>
           </div>
+
+          {/* Controls Bar */}
           <Controls
             running={running}
             setRunning={setRunning}
             speed={speed}
             setSpeed={setSpeed}
-            onInjectAnomaly={() => {
-              // Manual anomaly injection (same as scripted but user-triggered)
-              const truckBatch = batches.find(b => b.stage === "Truck");
-              const target = truckBatch ?? batches[0];
-              if (target) {
-                forceAnomaly(target);
-                if (!anomalyFiredRef.current) {
-                  anomalyFiredRef.current = true;
-                  setAnomalyFired(true);
-                  setAnomalyBatchId(target.id);
-                }
-              }
-            }}
+            batchCount={batches.length}
+            onInjectAnomaly={() => setShowPicker(true)}
+            onAddBatch={() => setShowNewBatchModal(true)}
           />
         </header>
 
-        {/* ── Anomaly banner ── */}
-        {anomalyFired && !showAIPanel && (
-          <button
+        {/* ── Executive Metric Pods ── */}
+        <StatsBar batches={batches} delivered={delivered} spoiled={spoiled} />
+
+        {/* ── Emergency Anomaly Banner (Shown if critical batches exist) ── */}
+        {criticalBatches.length > 0 && (
+          <div
             id="anomaly-banner"
-            onClick={() => setShowAIPanel(true)}
-            className="w-full rounded-xl px-5 py-3 flex items-center gap-3 text-sm font-semibold transition-all duration-200 hover:scale-[1.005] animate-slide-up"
-            style={{
-              background: "rgba(239,68,68,0.10)",
-              border: "1px solid rgba(239,68,68,0.45)",
-              color: "#fca5a5",
-              boxShadow: "0 0 32px rgba(239,68,68,0.12)",
-              animation: "pulseGlow 2.5s ease infinite",
-            }}
+            onClick={() => handleBatchClick(criticalBatches[0].id)}
+            className="group cursor-pointer rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs font-semibold transition-all hover:border-red-500/50 bg-red-950/30 border border-red-500/30 text-red-200 shadow-lg"
           >
-            <span className="text-lg">⚠️</span>
-            <span>
-              <strong>COLD CHAIN BREACH DETECTED</strong> — 🥩 Meat Batch #{anomalyBatchId} ·
-              Temperature spiked to 18.3°C during Truck transit
+            <div className="flex items-center gap-3">
+              <span className="text-lg">🚨</span>
+              <div>
+                <span className="font-bold uppercase tracking-wide text-red-300">
+                  CRITICAL COLD-CHAIN BREACH DETECTED:
+                </span>{" "}
+                <span className="text-slate-200">
+                  {criticalBatches
+                    .map((b) => {
+                      const cfg = PRODUCTS_MAP[b.product];
+                      return `${cfg.emoji} ${cfg.label} #${b.id} (${b.stage})`;
+                    })
+                    .join(" · ")}
+                </span>
+              </div>
+            </div>
+
+            <span className="font-mono-data font-semibold px-3 py-1 rounded-lg bg-red-500/20 text-red-200 border border-red-500/30 group-hover:bg-red-500/30 transition-colors">
+              Lock On &amp; Diagnose →
             </span>
-            <span
-              className="ml-auto rounded-full px-3 py-1 text-xs font-bold"
-              style={{ background: "rgba(239,68,68,0.25)", border: "1px solid rgba(239,68,68,0.5)" }}
-            >
-              Click to Analyse →
-            </span>
-          </button>
+          </div>
         )}
 
-        {/* ── Main content grid ── */}
-        <div className="grid flex-1 grid-cols-1 gap-4 lg:grid-cols-4">
-          {/* Route Map (dominant) */}
-          <div className="lg:col-span-3 flex flex-col">
+        {/* ── Main Command Grid (2 Zones: Operations Deck & Intelligence Rail) ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-5 flex-1 min-h-0">
+          {/* ── Zone 1: Main Operations Deck (Left / ~8 cols on desktop) ── */}
+          <main className="lg:col-span-8 flex flex-col gap-4 lg:gap-5">
+            {/* Live Logistics Route Corridor */}
             <RouteMap
               batches={batches}
-              anomalyFired={anomalyFired}
-              anomalyBatchId={anomalyBatchId}
-              onAnomalyClick={() => setShowAIPanel(true)}
+              selectedBatchId={selectedBatchId}
+              onBatchClick={handleBatchClick}
             />
-          </div>
-          {/* Alerts sidebar */}
-          <div className="lg:col-span-1 min-h-64 lg:min-h-0">
-            <AlertsFeed alerts={alerts} />
-          </div>
+
+            {/* 6-Stage Supply Chain Flight Board */}
+            <PipelineBoard
+              batches={batches}
+              selectedBatchId={selectedBatchId}
+              onSelect={handleBatchClick}
+            />
+          </main>
+
+          {/* ── Zone 2: Mission Telemetry & Intelligence Rail (Right / ~4 cols) ── */}
+          <aside className="lg:col-span-4 flex flex-col gap-3 min-h-[500px]">
+            {/* Rail Switcher Header */}
+            <div className="flex items-center justify-between p-1 rounded-lg bg-[#0c1017] border border-slate-800">
+              <button
+                onClick={() => setActiveRightTab("alerts")}
+                className={`flex-1 py-1.5 px-3 rounded text-xs font-mono-data font-medium transition-all ${
+                  activeRightTab === "alerts"
+                    ? "bg-slate-800 text-slate-100 border border-slate-700 font-semibold shadow-sm"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                Incident Stream ({alerts.length})
+              </button>
+
+              <button
+                onClick={() => {
+                  if (!selectedBatch && batches.length > 0) {
+                    setSelectedBatchId(batches[0].id);
+                  }
+                  setActiveRightTab("detail");
+                }}
+                className={`flex-1 py-1.5 px-3 rounded text-xs font-mono-data font-medium transition-all ${
+                  activeRightTab === "detail"
+                    ? "bg-slate-800 text-slate-100 border border-slate-700 font-semibold shadow-sm"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                {selectedBatch ? `Batch #${selectedBatch.id} HUD` : "Inspector HUD"}
+              </button>
+            </div>
+
+            {/* Rail Content View */}
+            <div className="flex-1">
+              {activeRightTab === "detail" && selectedBatch ? (
+                <BatchDetail
+                  batch={selectedBatch}
+                  now={now}
+                  isResolved={Boolean(selectedBatch && resolvedBatchIds.has(selectedBatch.id))}
+                  onClose={() => {
+                    setSelectedBatchId(null);
+                    setActiveRightTab("alerts");
+                  }}
+                  onInjectAnomaly={() => handleInjectAnomaly(selectedBatch)}
+                  onOpenAIModal={(b) => {
+                    setAiModalBatch(b);
+                    setIsAiModalOpen(true);
+                  }}
+                />
+              ) : activeRightTab === "detail" && !selectedBatch ? (
+                <div className="rounded-lg p-6 text-center flex flex-col items-center justify-center h-full min-h-[320px] bg-zinc-900/50 border border-zinc-800">
+                  <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center text-lg mb-2 text-zinc-300">
+                    🔍
+                  </div>
+                  <h4 className="text-sm font-semibold text-zinc-200 mb-1">
+                    No Cargo Pod Selected
+                  </h4>
+                  <p className="text-xs text-zinc-400 max-w-xs mb-3 leading-relaxed">
+                    Select any batch from the pipeline board or incident stream to view live telemetry and AI root-cause diagnostics.
+                  </p>
+                  {batches.length > 0 && (
+                    <button
+                      onClick={() => setSelectedBatchId(batches[0].id)}
+                      className="px-3 py-1.5 rounded text-xs font-mono-data font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition-colors"
+                    >
+                      Inspect Batch #{batches[0].id}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <AlertsFeed
+                  alerts={alerts}
+                  batchCount={batches.length}
+                  onSelectBatch={(id) => {
+                    setSelectedBatchId(id);
+                    setActiveRightTab("detail");
+                  }}
+                  onTriggerAIAnalysis={(id) => {
+                    const target = batches.find((b) => b.id === id) || null;
+                    if (target) {
+                      setAiModalBatch(target);
+                      setIsAiModalOpen(true);
+                    } else {
+                      setSelectedBatchId(id);
+                      setActiveRightTab("detail");
+                    }
+                  }}
+                />
+              )}
+            </div>
+          </aside>
         </div>
 
-        {/* ── Stats footer ── */}
-        <StatsBar batches={batches} delivered={delivered} anomalyFired={anomalyFired} now={now} />
+        {/* ── Footer Mission Status ── */}
+        <footer className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg bg-[#121215] border border-zinc-800 text-[11px] font-mono-data text-zinc-500">
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+            <span>AI Supply Chain Integrity Engine Operational</span>
+          </div>
 
-        {/* ── Footer hint ── */}
-        <p className="text-center text-[10px] text-slate-800 pb-1">
-          {anomalyFired
-            ? "⚠ Anomaly detected — click the banner or ⚠️ on the map to open the AI Analyser"
-            : `Anomaly will trigger at T+${ANOMALY_AT}h · (currently T+${now.toFixed(1)}h at ${speed}× speed)`}
-        </p>
+          <div className="flex items-center gap-4">
+            <span>Clock: T+{now.toFixed(1)}h</span>
+            <span>Speed: {speed}×</span>
+            <span>In Road Transit: <strong className="text-zinc-300 font-semibold">{inTransitCount}</strong></span>
+            <span>Total Fleet: <strong className="text-zinc-300 font-semibold">{batches.length}</strong></span>
+          </div>
+        </footer>
       </div>
 
-      {/* ── AI Analyser overlay ── */}
-      {showAIPanel && anomalyBatchId !== null && (
-        <AnomalyPanel batchId={anomalyBatchId} onClose={() => setShowAIPanel(false)} />
+      {/* ── Dedicated AI Analysis Diagnostic Window Modal ── */}
+      <AIAnalysisModal
+        isOpen={isAiModalOpen}
+        batch={aiModalBatch}
+        now={now}
+        isAlreadyResolved={Boolean(aiModalBatch && resolvedBatchIds.has(aiModalBatch.id))}
+        onMarkResolved={handleMarkAnomalyResolved}
+        onClose={() => setIsAiModalOpen(false)}
+      />
+
+      {/* ── Batch Picker Incident Injection Modal ── */}
+      {showPicker && (
+        <BatchPicker
+          batches={batches}
+          onSelect={handleInjectAnomaly}
+          onClose={() => setShowPicker(false)}
+        />
+      )}
+
+      {/* ── New Batch Dispatch Modal ── */}
+      {showNewBatchModal && (
+        <NewBatchModal
+          onAdd={handleCreateCustomBatch}
+          onClose={() => setShowNewBatchModal(false)}
+        />
       )}
     </div>
   );

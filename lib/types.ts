@@ -17,16 +17,40 @@ export type Batch = {
   temp: number;
   humidity: number;
   gas: number;
+  spoilagePoints: number;
+  forcedSpikeNextTick: boolean;
   history: Reading[];
   risk: Risk;
   fraud: Fraud;
 };
 
-export type AlertEvent = { id: string; time: number; text: string; severity: "ok" | "warning" | "critical" };
+export type AlertEvent = {
+  id: string;
+  time: number;
+  text: string;
+  severity: "ok" | "warning" | "critical";
+  batchId?: number;
+  resolved?: boolean;
+  resolvedAt?: number;
+  diagnosis?: LLMAnalysisResult;
+};
 
 export type AnomalyAnalysis = {
   summary: string;
   likelyCause: string;
   actions: string[];
   confidence: number;
+};
+
+export type LLMAnalysisResult = {
+  summary: string;
+  likelyCause: string;
+  actions: string[];
+  prevention: string[];
+  confidence: number;
+  provider: "gemini" | "huggingface" | "demo";
+  model: string;
+  latencyMs: number;
+  haccpRiskLevel: "Low" | "Moderate" | "Critical";
+  isDemoFallback?: boolean;
 };

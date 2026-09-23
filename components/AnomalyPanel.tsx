@@ -163,7 +163,9 @@ export default function AnomalyPanel({ batchId, onClose }: { batchId: number; on
       timers.current.push(t);
     });
 
-    return () => timers.current.forEach(clearTimeout);
+    // Capture the ref value so the cleanup closure uses the same array
+    const currentTimers = timers.current;
+    return () => currentTimers.forEach(clearTimeout);
   }, []);
 
   return (

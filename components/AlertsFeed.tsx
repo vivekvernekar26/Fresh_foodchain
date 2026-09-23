@@ -1,16 +1,9 @@
 "use client";
 
 import type { AlertEvent } from "@/lib/types";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
-const SEVERITY_STYLE: Record<
-  AlertEvent["severity"],
-  { border: string; bg: string; text: string; dot: string }
-> = {
-  ok:       { border: "#334155", bg: "rgba(30,41,59,0.5)",   text: "#94a3b8", dot: "#64748b" },
-  warning:  { border: "#92400e", bg: "rgba(69,26,3,0.45)",   text: "#fcd34d", dot: "#f59e0b" },
-  critical: { border: "#7f1d1d", bg: "rgba(69,10,10,0.45)",  text: "#fca5a5", dot: "#ef4444" },
-};
+type Filter = "active" | "log" | "all";
 
 function formatTime(hours: number) {
   const h = Math.floor(hours);
@@ -18,8 +11,29 @@ function formatTime(hours: number) {
   return m > 0 ? `+${h}h ${m}m` : `+${h}h`;
 }
 
-export default function AlertsFeed({ alerts }: { alerts: AlertEvent[] }) {
+export default function AlertsFeed({
+  alerts,
+  batchCount,
+  onSelectBatch,
+  onTriggerAIAnalysis,
+}: {
+  alerts: AlertEvent[];
+  batchCount: number;
+  onSelectBatch?: (id: number) => void;
+  onTriggerAIAnalysis?: (id: number) => void;
+}) {
   const listRef = useRef<HTMLDivElement>(null);
+  const [filter, setFilter] = useState<Filter>("active");
+
+  const activeAlerts = alerts.filter((a) => !a.resolved);
+  const resolvedAlerts = alerts.filter((a) => a.resolved);
+
+  const filtered =
+    filter === "active"
+      ? activeAlerts
+      : filter === "log"
+      ? resolvedAlerts
+      : alerts;
 
   // Auto-scroll to top when new alerts arrive
   useEffect(() => {
@@ -27,63 +41,156 @@ export default function AlertsFeed({ alerts }: { alerts: AlertEvent[] }) {
   }, [alerts.length]);
 
   return (
-    <div
-      className="flex h-full flex-col rounded-xl overflow-hidden"
-      style={{ background: "rgba(11,22,34,0.85)", border: "1px solid rgba(255,255,255,0.07)" }}
-    >
+    <div className="flex h-full flex-col rounded-lg bg-[#121215] border border-zinc-800 overflow-hidden text-zinc-100 shadow-xl">
       {/* Header */}
-      <div
-        className="flex items-center justify-between px-3 py-2.5"
-        style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}
-      >
-        <span className="text-sm font-semibold text-slate-200">Live Alerts</span>
-        <div className="flex items-center gap-1.5">
-          <span
-            className="block h-2 w-2 rounded-full"
-            style={{
-              background: "var(--color-ok)",
-              animation: "pulseDot 1.8s ease-in-out infinite",
-            }}
-          />
-          <span className="text-[10px] text-slate-500">watching</span>
+      <div className="flex items-center justify-between p-3 border-b border-zinc-800 bg-[#18181b]">
+        <div className="flex items-center gap-2">
+          <span className={`w-2 h-2 rounded-full ${activeAlerts.length > 0 ? "bg-amber-500" : "bg-emerald-500"}`} />
+          <span className="text-xs font-semibold uppercase tracking-wider text-zinc-200">
+            Incident Operations
+          </span>
         </div>
+        <span className="text-[10px] font-mono-data text-zinc-400">
+          Tracking {batchCount} units
+        </span>
       </div>
 
-      {/* Alert list */}
-      <div ref={listRef} className="flex-1 overflow-y-auto p-2 space-y-1.5">
-        {alerts.length === 0 && (
-          <p className="p-3 text-xs text-slate-600 text-center leading-relaxed">
-            Monitoring 3 batches…<br />
-            <span className="text-slate-700">Alerts will appear here when an anomaly is detected.</span>
-          </p>
-        )}
-        {alerts.slice(0, 3).map((a, i) => {
-          const s = SEVERITY_STYLE[a.severity];
-          return (
-            <div
-              key={a.id}
-              id={`alert-${a.id}`}
-              className="rounded-lg px-2.5 py-2 text-xs animate-slide-in"
-              style={{
-                animationDelay: i === 0 ? "0ms" : undefined,
-                borderLeft: `3px solid ${s.border}`,
-                background: s.bg,
-                color: s.text,
-              }}
-            >
-              <div className="flex items-start gap-2">
-                <span
-                  className="mt-0.5 block h-1.5 w-1.5 shrink-0 rounded-full"
-                  style={{ background: s.dot }}
-                />
-                <div>
-                  <span className="text-slate-600">{formatTime(a.time)}</span>{" "}
-                  {a.text}
-                </div>
-              </div>
+      {/* Filter Tabs (Active vs Audit Log vs All) */}
+      <div className="flex items-center gap-1 p-1.5 border-b border-zinc-800 bg-zinc-950/40">
+        <button
+          onClick={() => setFilter("active")}
+          className={`flex-1 py-1 px-2 rounded text-[11px] font-mono-data font-medium transition-colors text-center ${
+            filter === "active"
+              ? "bg-zinc-800 text-zinc-100 font-semibold border border-zinc-700 shadow-sm"
+              : "text-zinc-400 hover:text-zinc-200"
+          }`}
+        >
+          Active ({activeAlerts.length})
+        </button>
+
+        <button
+          onClick={() => setFilter("log")}
+          className={`flex-1 py-1 px-2 rounded text-[11px] font-mono-data font-medium transition-colors text-center ${
+            filter === "log"
+              ? "bg-zinc-800 text-zinc-100 font-semibold border border-zinc-700 shadow-sm"
+              : "text-zinc-400 hover:text-zinc-200"
+          }`}
+        >
+          Audit Log ({resolvedAlerts.length})
+        </button>
+
+        <button
+          onClick={() => setFilter("all")}
+          className={`py-1 px-2 rounded text-[11px] font-mono-data font-medium transition-colors text-center ${
+            filter === "all"
+              ? "bg-zinc-800 text-zinc-100 font-semibold border border-zinc-700 shadow-sm"
+              : "text-zinc-400 hover:text-zinc-200"
+          }`}
+        >
+          All ({alerts.length})
+        </button>
+      </div>
+
+      {/* Alert Cards Feed */}
+      <div
+        ref={listRef}
+        className="flex-1 overflow-y-auto custom-scrollbar p-2.5 space-y-2 max-h-[580px]"
+      >
+        {filtered.length === 0 ? (
+          <div className="py-12 text-center text-xs text-zinc-500 font-mono-data space-y-1">
+            <div>
+              {filter === "active"
+                ? "✓ All cold-chain incidents resolved & logged."
+                : filter === "log"
+                ? "No resolved incidents logged yet."
+                : "No incidents recorded."}
             </div>
-          );
-        })}
+            {filter === "active" && resolvedAlerts.length > 0 && (
+              <button
+                onClick={() => setFilter("log")}
+                className="text-[11px] text-zinc-400 hover:underline pt-1"
+              >
+                View Audit Log ({resolvedAlerts.length}) →
+              </button>
+            )}
+          </div>
+        ) : (
+          filtered.map((alert) => {
+            const match = alert.text.match(/#(\d+)/);
+            const batchId = alert.batchId ?? (match ? parseInt(match[1], 10) : null);
+            const isResolved = Boolean(alert.resolved);
+
+            return (
+              <div
+                key={alert.id}
+                className={`group relative rounded p-2.5 transition-all ${
+                  isResolved
+                    ? "bg-zinc-950/40 border border-zinc-800/60 opacity-80"
+                    : alert.severity === "critical"
+                    ? "bg-zinc-900 border border-red-500/30"
+                    : alert.severity === "warning"
+                    ? "bg-zinc-900 border border-amber-500/30"
+                    : "bg-zinc-900 border border-zinc-800"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <div className="flex items-center gap-1.5">
+                    {isResolved ? (
+                      <span className="text-[10px] font-mono-data font-semibold text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-1.5 py-0.2 rounded flex items-center gap-1">
+                        <span>✓</span> Logged
+                      </span>
+                    ) : (
+                      <span
+                        className={`text-[9px] font-mono-data font-semibold uppercase px-1.5 py-0.2 rounded ${
+                          alert.severity === "critical"
+                            ? "bg-red-500/20 text-red-300 border border-red-500/30"
+                            : alert.severity === "warning"
+                            ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                            : "bg-zinc-800 text-zinc-400 border border-zinc-700"
+                        }`}
+                      >
+                        {alert.severity}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] font-mono-data text-zinc-500 shrink-0">
+                    {formatTime(alert.time)}
+                  </span>
+                </div>
+
+                <p className={`text-xs leading-relaxed ${isResolved ? "text-zinc-400" : "text-zinc-200"}`}>
+                  {alert.text}
+                </p>
+
+                {/* Actions */}
+                {batchId && (
+                  <div className="mt-2 flex items-center justify-end gap-2 border-t border-zinc-800/60 pt-1.5">
+                    <button
+                      onClick={() => onTriggerAIAnalysis?.(batchId)}
+                      className={`text-[10px] font-mono-data font-medium px-2 py-0.5 rounded transition-colors flex items-center gap-1 ${
+                        isResolved
+                          ? "text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 border border-zinc-700"
+                          : "text-zinc-100 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700"
+                      }`}
+                    >
+                      <span>{isResolved ? "View Log ↗" : "✨ AI Analysis"}</span>
+                    </button>
+
+                    {onSelectBatch && (
+                      <button
+                        onClick={() => onSelectBatch(batchId)}
+                        className="text-[10px] font-mono-data text-zinc-400 hover:text-zinc-200 flex items-center gap-1 transition-colors px-1 py-0.5"
+                      >
+                        <span>Inspect #{batchId}</span>
+                        <span>→</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );

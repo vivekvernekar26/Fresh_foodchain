@@ -1,101 +1,82 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap");
 @import "tailwindcss";
 
-/* ── Design tokens ─────────────────────────────────────────────────────── */
+/* ── Minimalist Dark Theme (Simple, Non-Vibrant) ────────────────────────── */
 :root {
-  --bg-base:        #050c14;
-  --bg-panel:       #0b1622;
-  --bg-card:        #0f1e2f;
-  --bg-card-hover:  #152436;
-  --border-subtle:  rgba(255,255,255,0.07);
-  --border-muted:   rgba(255,255,255,0.12);
-  --border-bright:  rgba(255,255,255,0.22);
+  --bg-base:        #09090b;   /* Zinc 950 */
+  --bg-surface:     #121215;   /* Dark Surface */
+  --bg-panel:       #18181b;   /* Zinc 900 */
+  --bg-card:        #18181b;   /* Zinc 900 */
+  --bg-card-hover:  #202024;
+  --border-subtle:  #27272a;   /* Zinc 800 */
+  --border-muted:   #3f3f46;   /* Zinc 700 */
 
-  --color-ok:       #10b981;   /* emerald-500 */
-  --color-ok-dim:   #064e3b;
-  --color-warn:     #f59e0b;   /* amber-500  */
-  --color-warn-dim: #451a03;
-  --color-crit:     #ef4444;   /* red-500    */
-  --color-crit-dim: #450a0a;
-  --color-sky:      #38bdf8;   /* sky-400    */
-  --color-sky-dim:  #082f49;
+  /* Minimal functional status accents */
+  --color-ok:       #10b981;
+  --color-warn:     #f59e0b;
+  --color-crit:     #ef4444;
 
-  --glow-ok:    0 0 18px rgba(16,185,129,0.35);
-  --glow-warn:  0 0 18px rgba(245,158,11,0.35);
-  --glow-crit:  0 0 18px rgba(239, 68, 68,0.45);
-  --glow-sky:   0 0 18px rgba(56,189,248,0.35);
-
-  --radius-card: 12px;
-  --blur-glass:  blur(16px) saturate(180%);
+  --radius-card:    8px;
 }
 
-/* ── Base ──────────────────────────────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; }
+/* ── Base Setup ────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
 
 html, body {
-  height: 100%;
-  background: var(--bg-base);
-  color: #e2e8f0;
-  font-family: "Inter", system-ui, sans-serif;
+  min-height: 100%;
+  background-color: var(--bg-base);
+  color: #f4f4f5;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* ── Keyframes ─────────────────────────────────────────────────────────── */
+/* ── Simple Dark Panels & Cards ───────────────────────────────────────── */
+.glass-panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+}
+
+.glass-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.glass-card:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-muted);
+}
+
+/* Monospace telemetry figure styling */
+.font-mono-data {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* ── Simple Keyframe Animations ───────────────────────────────────────── */
 @keyframes fadeIn {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
 
 @keyframes slideUp {
-  from { opacity: 0; transform: translateY(16px); }
+  from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes slideInLeft {
-  from { opacity: 0; transform: translateX(-12px); }
-  to   { opacity: 1; transform: translateX(0); }
+.animate-fade-in  { animation: fadeIn 0.15s ease both; }
+.animate-slide-up { animation: slideUp 0.2s ease both; }
+
+/* ── Simple Custom Dark Scrollbar ─────────────────────────────────────── */
+.custom-scrollbar::-webkit-scrollbar       { width: 5px; height: 5px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #27272a; border-radius: 9999px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+
+.sidebar-scroll {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #27272a transparent;
 }
-
-@keyframes pulseGlow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6); }
-  50%       { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
-}
-
-@keyframes pulseDot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%       { opacity: 0.5; transform: scale(0.75); }
-}
-
-@keyframes shimmer {
-  0%   { background-position: -200% center; }
-  100% { background-position:  200% center; }
-}
-
-@keyframes riskBarFill {
-  from { width: 0%; }
-}
-
-/* ── Utility classes ───────────────────────────────────────────────────── */
-.glass {
-  background: rgba(15, 30, 47, 0.7);
-  backdrop-filter: var(--blur-glass);
-  -webkit-backdrop-filter: var(--blur-glass);
-  border: 1px solid var(--border-subtle);
-}
-
-.glass-bright {
-  background: rgba(15, 30, 47, 0.85);
-  backdrop-filter: var(--blur-glass);
-  -webkit-backdrop-filter: var(--blur-glass);
-  border: 1px solid var(--border-muted);
-}
-
-.animate-fade-in  { animation: fadeIn  0.25s ease both; }
-.animate-slide-up { animation: slideUp 0.35s ease both; }
-.animate-slide-in { animation: slideInLeft 0.3s ease both; }
-
-/* ── Custom scrollbar ──────────────────────────────────────────────────── */
-::-webkit-scrollbar       { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 9999px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }

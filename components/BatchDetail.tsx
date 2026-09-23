@@ -11,362 +11,312 @@ const recommendDestinationFn = recommendDestination as unknown as (
   now: number
 ) => (typeof SHOPS)[number] & { demand: number; stock: number; score: number };
 
-const STATUS_COLOR: Record<string, string> = {
-  ok:       "var(--color-ok)",
-  warning:  "var(--color-warn)",
-  critical: "var(--color-crit)",
-};
-
-/* ── Upgraded Sparkline: area fill + gradient + ideal reference line ───── */
+/* ── Sparkline with Clean Line ───────────────────────────────────────────── */
 function Sparkline({
   values,
-  color,
   ideal,
   label,
   unit,
 }: {
   values: number[];
-  color: string;
   ideal: number;
   label: string;
   unit: string;
 }) {
-  if (values.length < 2) return null;
-  const min = Math.min(...values, ideal) * 0.95;
-  const max = Math.max(...values, ideal) * 1.05 || 1;
+  const safeValues = values.length >= 2 ? values : values.length === 1 ? [values[0], values[0]] : [ideal, ideal];
+  const min = Math.min(...safeValues, ideal) * 0.92;
+  const max = Math.max(...safeValues, ideal) * 1.08 || 1;
   const range = max - min || 1;
-  const W = 100, H = 40;
-  const toX = (i: number) => (i / (values.length - 1)) * W;
-  const toY = (v: number) => H - ((v - min) / range) * (H - 4) - 2;
+  const W = 100, H = 34;
+  const toX = (i: number) => (i / (safeValues.length - 1)) * W;
+  const toY = (v: number) => H - ((v - min) / range) * (H - 6) - 3;
 
-  const linePoints = values.map((v, i) => `${toX(i)},${toY(v)}`).join(" ");
-  const areaPoints =
-    `0,${H} ` +
-    values.map((v, i) => `${toX(i)},${toY(v)}`).join(" ") +
-    ` ${W},${H}`;
-
+  const linePoints = safeValues.map((v, i) => `${toX(i)},${toY(v)}`).join(" ");
   const idealY = toY(ideal);
-  const gradId = `grad-${label.replace(/\s/g, "")}`;
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs text-slate-500">{label}</span>
-        <span className="text-xs font-medium" style={{ color }}>
+    <div className="rounded p-2 bg-zinc-900/60 border border-zinc-800">
+      <div className="flex items-center justify-between mb-1 text-xs">
+        <span className="text-zinc-400 font-medium">{label}</span>
+        <span className="font-mono-data font-semibold text-zinc-200">
           {values[values.length - 1].toFixed(1)}{unit}
-          <span className="text-slate-600 ml-1">(ideal {ideal}{unit})</span>
+          <span className="text-zinc-500 font-normal ml-1">(ideal {ideal}{unit})</span>
         </span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 44 }} preserveAspectRatio="none">
-        <defs>
-          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor={color} stopOpacity="0.35" />
-            <stop offset="100%" stopColor={color} stopOpacity="0.02" />
-          </linearGradient>
-        </defs>
-        {/* Area fill */}
-        <polygon points={areaPoints} fill={`url(#${gradId})`} />
-        {/* Ideal reference line */}
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 34 }} preserveAspectRatio="none">
         <line
           x1="0" y1={idealY} x2={W} y2={idealY}
-          stroke="rgba(255,255,255,0.15)"
+          stroke="#3f3f46"
           strokeWidth="0.8"
-          strokeDasharray="3 3"
+          strokeDasharray="2 3"
         />
-        {/* Main line */}
         <polyline
           points={linePoints}
           fill="none"
-          stroke={color}
-          strokeWidth="1.8"
+          stroke="#d4d4d8"
+          strokeWidth="1.5"
           strokeLinejoin="round"
-          style={{ filter: `drop-shadow(0 0 3px ${color}88)` }}
         />
-        {/* Latest value dot */}
         <circle
           cx={toX(values.length - 1)}
           cy={toY(values[values.length - 1])}
-          r="2.5"
-          fill={color}
-          style={{ filter: `drop-shadow(0 0 4px ${color})` }}
+          r="2"
+          fill="#d4d4d8"
         />
       </svg>
     </div>
   );
 }
 
-/* ── AI Analyser Panel ───────────────────────────────────────────────────── */
-function AIAnalyser({ analysis }: { analysis: AnomalyAnalysis }) {
-  return (
-    <div
-      className="rounded-xl p-4 space-y-3 mt-4"
-      style={{
-        background: "rgba(56,189,248,0.05)",
-        border: "1px solid rgba(56,189,248,0.2)",
-      }}
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-bold text-sky-300 tracking-wide uppercase">🤖 AI Analyser</span>
-        {/* Confidence meter */}
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] text-slate-500">Confidence</span>
-          <div className="w-20 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
-            <div
-              className="h-full rounded-full transition-all duration-700"
-              style={{
-                width: `${analysis.confidence}%`,
-                background: analysis.confidence > 80
-                  ? "linear-gradient(90deg,#10b981,#34d399)"
-                  : analysis.confidence > 60
-                  ? "linear-gradient(90deg,#f59e0b,#fcd34d)"
-                  : "linear-gradient(90deg,#ef4444,#f87171)",
-              }}
-            />
-          </div>
-          <span
-            className="text-xs font-bold"
-            style={{
-              color: analysis.confidence > 80 ? "var(--color-ok)"
-                   : analysis.confidence > 60 ? "var(--color-warn)"
-                   : "var(--color-crit)",
-            }}
-          >
-            {analysis.confidence}%
-          </span>
-        </div>
-      </div>
-
-      {/* Summary */}
-      <p className="text-xs text-slate-300 leading-relaxed">{analysis.summary}</p>
-
-      {/* Likely cause */}
-      <div className="rounded-lg p-2.5" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
-        <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Likely Cause</div>
-        <p className="text-xs text-slate-400 leading-relaxed">{analysis.likelyCause}</p>
-      </div>
-
-      {/* Actions */}
-      <div>
-        <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Recommended Actions</div>
-        <ol className="space-y-1">
-          {analysis.actions.map((action, i) => (
-            <li key={i} className="flex gap-2 text-xs text-slate-300">
-              <span
-                className="shrink-0 w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center"
-                style={{ background: "rgba(56,189,248,0.15)", color: "#38bdf8" }}
-              >
-                {i + 1}
-              </span>
-              {action}
-            </li>
-          ))}
-        </ol>
-      </div>
-    </div>
-  );
-}
-
-/* ── Main component ──────────────────────────────────────────────────────── */
+/* ── Main Batch Detail Component ─────────────────────────────────────────── */
 export default function BatchDetail({
   batch,
   now,
   onClose,
+  onInjectAnomaly,
+  onOpenAIModal,
+  isResolved,
 }: {
   batch: Batch;
   now: number;
   onClose: () => void;
+  onInjectAnomaly?: () => void;
+  onOpenAIModal?: (batch: Batch) => void;
+  isResolved?: boolean;
 }) {
   const cfg = PRODUCTS[batch.product];
   const destination = recommendDestinationFn(batch, SHOPS, now);
-  const analysis = analyzeAnomalyFn(batch);
-  const statusColor = STATUS_COLOR[batch.risk.status];
+  const ruleAnalysis = analyzeAnomalyFn(batch);
   const shelfLeft = Math.max(0, Math.round(batch.risk.remainingShelfLifeHours));
 
+  const hasAnomaly =
+    !isResolved &&
+    (batch.fraud.fraudSuspected ||
+      batch.risk.status === "critical" ||
+      batch.risk.status === "warning" ||
+      batch.temp > cfg.idealTemp + 3.5 ||
+      batch.gas > cfg.idealGas + 4);
+
   return (
-    <div
-      className="fixed inset-0 z-20 flex items-center justify-center p-4"
-      style={{ background: "rgba(5,12,20,0.8)", backdropFilter: "blur(8px)" }}
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-lg rounded-2xl overflow-hidden animate-slide-up"
-        style={{
-          background: "rgba(11,22,34,0.95)",
-          border: "1px solid rgba(255,255,255,0.12)",
-          boxShadow: "0 24px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06)",
-          maxHeight: "90vh",
-          overflowY: "auto",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* ── Header ── */}
-        <div
-          className="px-5 pt-5 pb-4"
-          style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <h2 className="text-lg font-bold text-slate-100">
-                {cfg.emoji} {cfg.label}
-                <span className="ml-2 text-slate-600 font-normal text-sm">Batch #{batch.id}</span>
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Currently at <span className="text-slate-300">{batch.stage}</span>
-              </p>
-            </div>
-            <button
-              id="batch-detail-close"
-              onClick={onClose}
-              className="rounded-full w-7 h-7 flex items-center justify-center text-slate-500 hover:text-slate-200 transition-colors"
-              style={{ background: "rgba(255,255,255,0.05)" }}
-            >
-              ✕
-            </button>
-          </div>
-
-          {/* Risk summary row */}
-          <div className="flex items-center gap-4 mt-4">
-            <div>
-              <div className="text-3xl font-extrabold tabular-nums" style={{ color: statusColor }}>
-                {batch.risk.riskScore}%
-              </div>
-              <div className="text-[10px] text-slate-500 uppercase tracking-wide">Spoilage risk</div>
-            </div>
-            <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
-              <div
-                className="h-full rounded-full transition-all duration-700"
-                style={{
-                  width: `${batch.risk.riskScore}%`,
-                  background: `linear-gradient(90deg, ${statusColor}aa, ${statusColor})`,
-                  boxShadow: `0 0 8px ${statusColor}66`,
-                }}
-              />
-            </div>
-            <div className="text-right">
-              <div className="text-lg font-bold text-slate-200">{shelfLeft}h</div>
-              <div className="text-[10px] text-slate-500 uppercase tracking-wide">Shelf left</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="px-5 py-4 space-y-5">
-          {/* ── Fraud alert ── */}
-          {batch.fraud.fraudSuspected && (
-            <div
-              className="rounded-xl p-3 text-sm"
-              style={{
-                background: "rgba(69,10,10,0.5)",
-                border: "1px solid rgba(239,68,68,0.4)",
-                color: "#fca5a5",
-              }}
-            >
-              🚩 <strong>Fraud / Anomaly Detected</strong>
-              <p className="mt-1 text-xs text-red-300/80">{batch.fraud.reason}</p>
-            </div>
-          )}
-
-          {/* ── Sensor gauges ── */}
+    <div className="rounded-lg bg-[#121215] border border-zinc-800 shadow-xl overflow-hidden animate-slide-up flex flex-col h-full text-zinc-100">
+      {/* Header */}
+      <div className="p-3.5 border-b border-zinc-800 bg-[#18181b]">
+        <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
-              Live Sensors
+            <div className="flex items-center gap-2">
+              <span className="text-lg leading-none">{cfg.emoji}</span>
+              <h3 className="text-sm font-semibold text-zinc-100">
+                {cfg.label}
+                <span className="ml-1 font-mono-data font-normal text-zinc-400">
+                  #{batch.id}
+                </span>
+              </h3>
+              <span className="text-[10px] font-mono-data font-semibold uppercase px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">
+                {isResolved ? "RESOLVED & LOGGED" : batch.risk.status}
+              </span>
             </div>
-            <div className="flex items-center justify-around">
-              <SensorGauge
-                value={batch.temp}
-                min={-5}
-                max={35}
-                ideal={cfg.idealTemp}
-                color="#f87171"
-                label="Temperature"
-                unit="°C"
-              />
-              <SensorGauge
-                value={batch.humidity}
-                min={30}
-                max={100}
-                ideal={cfg.idealHumidity}
-                color="#60a5fa"
-                label="Humidity"
-                unit="%"
-              />
-              <SensorGauge
-                value={batch.gas}
-                min={0}
-                max={cfg.idealGas * 4}
-                ideal={cfg.idealGas}
-                color="#4ade80"
-                label="Gas"
-                unit="ppm"
-              />
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400 mt-1 font-mono-data">
+              <span>Location: <strong className="text-zinc-300 font-sans">{batch.stage}</strong></span>
+              <span>·</span>
+              <span>In Stage: <strong className="text-zinc-300">{Math.max(0, now - batch.stageEnteredAt).toFixed(1)}h</strong></span>
             </div>
           </div>
 
-          {/* ── Sparklines ── */}
-          <div>
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
-              Sensor History
-            </div>
-            <div className="space-y-4">
-              <Sparkline
-                values={batch.history.map((h) => h.temp)}
-                color="#f87171"
-                ideal={cfg.idealTemp}
-                label="Temperature"
-                unit="°C"
-              />
-              <Sparkline
-                values={batch.history.map((h) => h.humidity)}
-                color="#60a5fa"
-                ideal={cfg.idealHumidity}
-                label="Humidity"
-                unit="%"
-              />
-              <Sparkline
-                values={batch.history.map((h) => h.gas)}
-                color="#4ade80"
-                ideal={cfg.idealGas}
-                label="Gas level"
-                unit="ppm"
-              />
-            </div>
-          </div>
-
-          {/* ── AI Analyser ── */}
-          <AIAnalyser analysis={analysis} />
-
-          {/* ── Destination recommendation ── */}
-          <div
-            className="rounded-xl p-3"
-            style={{ background: "rgba(56,189,248,0.06)", border: "1px solid rgba(56,189,248,0.18)" }}
+          <button
+            id="batch-detail-close"
+            onClick={onClose}
+            className="rounded w-6 h-6 flex items-center justify-center text-zinc-400 hover:text-white bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 transition-colors"
           >
-            <div className="text-[10px] font-semibold text-sky-500 uppercase tracking-wide mb-2">
-              📍 Recommended Destination
+            ✕
+          </button>
+        </div>
+      </div>
+
+      {/* Scrollable Body */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-3.5 space-y-3.5">
+        
+        {/* ── AI Anomaly Action Card ── */}
+        <div className="rounded p-3 bg-zinc-900 border border-zinc-800 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-semibold text-zinc-200">
+              AI Diagnostics Engine
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-sky-300">{destination.name}</span>
+            {isResolved ? (
+              <span className="text-[9px] font-mono-data px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-300 font-semibold border border-emerald-800">
+                ✓ RESOLVED &amp; LOGGED
+              </span>
+            ) : hasAnomaly ? (
+              <span className="text-[9px] font-mono-data px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 font-semibold border border-zinc-700">
+                INCIDENT ACTIVE
+              </span>
+            ) : null}
+          </div>
+
+          <button
+            onClick={() => onOpenAIModal?.(batch)}
+            className="w-full flex items-center justify-center gap-2 rounded py-2 px-3 text-xs font-mono-data font-semibold bg-zinc-100 text-zinc-900 hover:bg-zinc-200 transition-colors"
+          >
+            <span>{isResolved ? "View Incident Audit Report" : "Open AI Diagnostics Window"}</span>
+            <span>↗</span>
+          </button>
+        </div>
+
+        {/* Real-time Sensor Gauges */}
+        <div className="grid grid-cols-3 gap-2">
+          <SensorGauge
+            value={batch.temp}
+            min={-5}
+            max={35}
+            ideal={cfg.idealTemp}
+            unit="°C"
+            label="Thermal"
+          />
+          <SensorGauge
+            value={batch.humidity}
+            min={20}
+            max={100}
+            ideal={cfg.idealHumidity}
+            unit="%"
+            label="Moisture"
+          />
+          <SensorGauge
+            value={batch.gas}
+            min={0}
+            max={40}
+            ideal={cfg.idealGas}
+            unit="ppm"
+            label="Gas / VOC"
+          />
+        </div>
+
+        {/* Risk & Spoilage Metrics Row */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded p-2.5 bg-zinc-900/60 border border-zinc-800">
+            <div className="text-[10px] uppercase font-medium text-zinc-400 mb-1">
+              Spoilage Index
             </div>
-            <div className="mt-2 grid grid-cols-2 gap-3">
-              {[
-                { label: "Demand", value: destination.demand, color: "#4ade80" },
-                { label: "Stock", value: destination.stock, color: "#f87171" },
-              ].map(({ label, value, color }) => (
-                <div key={label}>
-                  <div className="flex justify-between text-[10px] text-slate-500 mb-1">
-                    <span>{label}</span>
-                    <span style={{ color }}>{value}/5</span>
-                  </div>
-                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
-                    <div
-                      className="h-full rounded-full transition-all duration-700"
-                      style={{ width: `${(value / 5) * 100}%`, background: color }}
-                    />
-                  </div>
-                </div>
-              ))}
+            <div className="text-lg font-semibold font-mono-data text-zinc-100">
+              {batch.risk.riskScore}%
+            </div>
+            <div className="mt-1.5 h-1 rounded-full bg-zinc-800 overflow-hidden">
+              <div
+                className="h-full bg-zinc-300 rounded-full"
+                style={{ width: `${Math.min(100, batch.risk.riskScore)}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="rounded p-2.5 bg-zinc-900/60 border border-zinc-800">
+            <div className="text-[10px] uppercase font-medium text-zinc-400 mb-1">
+              Residual Life
+            </div>
+            <div className="text-lg font-semibold font-mono-data text-zinc-100">
+              {shelfLeft}h
+            </div>
+            <div className="mt-1.5 h-1 rounded-full bg-zinc-800 overflow-hidden">
+              <div
+                className="h-full bg-zinc-300 rounded-full"
+                style={{ width: `${Math.max(0, Math.min(100, (shelfLeft / cfg.baselineShelfLifeHours) * 100))}%` }}
+              />
             </div>
           </div>
         </div>
+
+        {/* Telemetry Trajectories (Sparklines) */}
+        <div className="space-y-1.5">
+          <div className="text-[10px] font-medium uppercase tracking-wider text-zinc-400">
+            Telemetry Trajectory
+          </div>
+          <div className="space-y-1.5">
+            <Sparkline
+              values={batch.history.map((h) => h.temp)}
+              ideal={cfg.idealTemp}
+              label="Thermal"
+              unit="°C"
+            />
+            <Sparkline
+              values={batch.history.map((h) => h.humidity)}
+              ideal={cfg.idealHumidity}
+              label="Moisture"
+              unit="%"
+            />
+            <Sparkline
+              values={batch.history.map((h) => h.gas)}
+              ideal={cfg.idealGas}
+              label="Gas / VOC"
+              unit="ppm"
+            />
+          </div>
+        </div>
+
+        {/* Fast Baseline Summary */}
+        <div className="rounded p-2.5 bg-zinc-900/60 border border-zinc-800 space-y-1.5">
+          <div className="flex items-center justify-between text-[10px] font-mono-data text-zinc-400">
+            <span className="font-semibold uppercase tracking-wider">Baseline Telemetry Status</span>
+            <span className="text-zinc-300 font-semibold">{ruleAnalysis.confidence}% Match</span>
+          </div>
+
+          <p className="text-xs text-zinc-300 leading-relaxed">
+            {ruleAnalysis.summary}
+          </p>
+        </div>
+
+        {/* Dynamic Route Optimization */}
+        <div className="rounded p-3 bg-zinc-900/60 border border-zinc-800 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
+              Optimal Reroute Target
+            </div>
+            <span className="text-[10px] font-mono-data font-semibold text-zinc-400">
+              Match
+            </span>
+          </div>
+
+          <div className="text-sm font-semibold text-zinc-100">
+            {destination.name}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="rounded p-2 bg-zinc-950/60 border border-zinc-800">
+              <div className="flex justify-between text-[10px] text-zinc-400 mb-1">
+                <span>Demand</span>
+                <span className="font-mono-data text-zinc-200 font-semibold">{destination.demand}/5</span>
+              </div>
+              <div className="h-1 rounded-full bg-zinc-800 overflow-hidden">
+                <div
+                  className="h-full bg-zinc-300"
+                  style={{ width: `${(destination.demand / 5) * 100}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="rounded p-2 bg-zinc-950/60 border border-zinc-800">
+              <div className="flex justify-between text-[10px] text-zinc-400 mb-1">
+                <span>Stock</span>
+                <span className="font-mono-data text-zinc-200 font-semibold">{destination.stock}/5</span>
+              </div>
+              <div className="h-1 rounded-full bg-zinc-800 overflow-hidden">
+                <div
+                  className="h-full bg-zinc-400"
+                  style={{ width: `${(destination.stock / 5) * 100}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Force Anomaly Trigger */}
+        {onInjectAnomaly && (
+          <button
+            id="batch-detail-inject"
+            onClick={() => {
+              onInjectAnomaly();
+            }}
+            className="w-full rounded py-2 text-xs font-medium tracking-wide bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition-colors"
+          >
+            Force Anomaly Spike (#{batch.id})
+          </button>
+        )}
       </div>
     </div>
   );
