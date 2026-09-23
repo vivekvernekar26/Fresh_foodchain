@@ -1,77 +1,75 @@
+"use client";
+
 import { STAGES, PRODUCTS } from "@/lib/simulation.js";
 import type { Batch } from "@/lib/types";
 
-const STAGE_META: Record<string, { emoji: string; color: string }> = {
-  Farm:      { emoji: "🌾", color: "#84cc16" },
-  Storage:   { emoji: "🏭", color: "#a78bfa" },
-  Truck:     { emoji: "🚛", color: "#f59e0b" },
-  Warehouse: { emoji: "🏪", color: "#38bdf8" },
-  Shop:      { emoji: "🛒", color: "#34d399" },
-  Customer:  { emoji: "👤", color: "#fb923c" },
+const STAGE_CONFIG: Record<
+  string,
+  { label: string; emoji: string }
+> = {
+  Farm:      { label: "Farm Source",  emoji: "🌾" },
+  Storage:   { label: "Cold Storage", emoji: "🏭" },
+  Truck:     { label: "Transit",      emoji: "🚛" },
+  Warehouse: { label: "Logistics Hub",emoji: "🏪" },
+  Shop:      { label: "Retail Outlet",emoji: "🛒" },
+  Customer:  { label: "Delivered",    emoji: "👤" },
 };
 
-const STATUS_RING: Record<string, string> = {
-  ok:       "rgba(16,185,129,0.25)",
-  warning:  "rgba(245,158,11,0.35)",
-  critical: "rgba(239,68,68,0.4)",
-};
-
-const STATUS_BAR: Record<string, string> = {
-  ok:       "linear-gradient(90deg, #10b981, #34d399)",
-  warning:  "linear-gradient(90deg, #f59e0b, #fcd34d)",
-  critical: "linear-gradient(90deg, #ef4444, #f87171)",
-};
-
-function BatchCard({ batch, onSelect }: { batch: Batch; onSelect: (id: number) => void }) {
-  const cfg = PRODUCTS[batch.product];
+function BatchFlightCard({
+  batch,
+  selected,
+  onSelect,
+}: {
+  batch: Batch;
+  selected: boolean;
+  onSelect: (id: number) => void;
+}) {
+  const cfg = (PRODUCTS as Record<string, { label: string; emoji: string; idealTemp: number }>)[batch.product];
   const status = batch.risk.status;
+  const currentTemp = batch.temp ?? 0;
+
   return (
     <button
       id={`batch-card-${batch.id}`}
       onClick={() => onSelect(batch.id)}
-      className="w-full rounded-xl p-2.5 text-left transition-all duration-200 hover:scale-[1.02] hover:-translate-y-0.5 active:scale-[0.98]"
-      style={{
-        background: "rgba(15,30,47,0.75)",
-        border: `1px solid rgba(255,255,255,0.08)`,
-        boxShadow: `0 0 0 1px ${STATUS_RING[status]}, inset 0 1px 0 rgba(255,255,255,0.04)`,
-      }}
+      className={`group w-full rounded p-2.5 text-left transition-all ${
+        selected
+          ? "bg-zinc-800 border border-zinc-500 shadow-sm"
+          : status === "critical"
+          ? "bg-zinc-900/90 border border-red-500/40 hover:border-red-500/60"
+          : "bg-zinc-900 border border-zinc-800 hover:border-zinc-700"
+      }`}
     >
-      {/* Header row */}
-      <div className="flex items-center justify-between mb-1.5">
-        <span className="text-xs font-medium text-slate-300">
-          {cfg.emoji} {cfg.label} <span className="text-slate-600">#{batch.id}</span>
-        </span>
-        {batch.fraud.fraudSuspected && (
-          <span
-            title={batch.fraud.reason ?? ""}
-            className="text-xs leading-none"
-            style={{ animation: "pulseGlow 1.8s ease infinite" }}
-          >
-            🚩
+      <div className="flex items-center justify-between gap-1 mb-1.5">
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm">{cfg?.emoji ?? "📦"}</span>
+          <span className="text-xs font-semibold text-zinc-100">
+            {cfg?.label ?? batch.product}
           </span>
-        )}
-      </div>
+          <span className="text-[10px] font-mono-data text-zinc-400">
+            #{batch.id}
+          </span>
+        </div>
 
-      {/* Risk bar */}
-      <div className="h-1.5 w-full overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.06)" }}>
-        <div
-          className="h-full rounded-full transition-all duration-700"
-          style={{
-            width: `${batch.risk.riskScore}%`,
-            background: STATUS_BAR[status],
-          }}
-        />
-      </div>
-
-      {/* Shelf life */}
-      <div className="mt-1 text-[10px] text-slate-600">
-        {Math.max(0, Math.round(batch.risk.remainingShelfLifeHours))}h shelf life left ·{" "}
         <span
-          style={{
-            color: status === "ok" ? "var(--color-ok)" : status === "warning" ? "var(--color-warn)" : "var(--color-crit)",
-          }}
+          className={`text-[9px] font-mono-data font-semibold uppercase px-1.5 py-0.5 rounded ${
+            status === "critical"
+              ? "bg-red-500/20 text-red-300 border border-red-500/30"
+              : status === "warning"
+              ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+              : "bg-zinc-800 text-zinc-400 border border-zinc-700"
+          }`}
         >
-          {batch.risk.riskScore}%
+          {status}
+        </span>
+      </div>
+
+      <div className="flex items-center justify-between text-[11px] font-mono-data text-zinc-400">
+        <span>
+          {currentTemp.toFixed(1)}°C
+        </span>
+        <span>
+          {Math.max(0, Math.round(batch.risk.remainingShelfLifeHours))}h left
         </span>
       </div>
     </button>
@@ -80,67 +78,74 @@ function BatchCard({ batch, onSelect }: { batch: Batch; onSelect: (id: number) =
 
 export default function PipelineBoard({
   batches,
+  selectedBatchId,
   onSelect,
 }: {
   batches: Batch[];
+  selectedBatchId: number | null;
   onSelect: (id: number) => void;
 }) {
-  return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-      {STAGES.map((stage) => {
-        const inStage = batches.filter((b) => b.stage === stage);
-        const meta = STAGE_META[stage];
-        const critCount = inStage.filter((b) => b.risk.status === "critical").length;
-        const warnCount = inStage.filter((b) => b.risk.status === "warning").length;
+  const byStage = STAGES.reduce(
+    (acc, stage) => {
+      acc[stage] = batches.filter((b) => b.stage === stage);
+      return acc;
+    },
+    {} as Record<string, Batch[]>
+  );
 
-        return (
-          <div
-            key={stage}
-            className="flex flex-col rounded-xl"
-            style={{
-              background: "rgba(11,22,34,0.8)",
-              border: "1px solid rgba(255,255,255,0.07)",
-              backdropFilter: "blur(8px)",
-            }}
-          >
-            {/* Stage header */}
+  return (
+    <div className="rounded-lg bg-[#121215] border border-zinc-800 p-4 shadow-xl">
+      <div className="flex items-center justify-between mb-3 border-b border-zinc-800 pb-2.5">
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-zinc-100">
+            Supply Chain Pipeline
+          </h2>
+          <span className="text-xs text-zinc-500 font-mono-data">
+            ({batches.length} total units)
+          </span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+        {STAGES.map((stage) => {
+          const config = STAGE_CONFIG[stage] ?? { label: stage, emoji: "📦" };
+          const stageBatches = byStage[stage] ?? [];
+
+          return (
             <div
-              className="flex items-center justify-between px-3 py-2 rounded-t-xl"
-              style={{
-                borderBottom: "1px solid rgba(255,255,255,0.06)",
-                background: `linear-gradient(135deg, ${meta.color}14, transparent)`,
-              }}
+              key={stage}
+              className="rounded bg-zinc-950/60 border border-zinc-800/80 p-2.5 flex flex-col min-h-[160px]"
             >
-              <span className="text-xs font-semibold" style={{ color: meta.color }}>
-                {meta.emoji} {stage}
-              </span>
-              <div className="flex items-center gap-1">
-                {critCount > 0 && (
-                  <span className="rounded px-1 text-[9px] font-bold" style={{ background: "rgba(239,68,68,0.2)", color: "#f87171" }}>
-                    {critCount}
-                  </span>
+              <div className="flex items-center justify-between border-b border-zinc-800 pb-1.5 mb-2">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-300">
+                  <span>{config.emoji}</span>
+                  <span>{config.label}</span>
+                </div>
+                <span className="text-[10px] font-mono-data font-semibold text-zinc-400 bg-zinc-800 px-1.5 py-0.2 rounded">
+                  {stageBatches.length}
+                </span>
+              </div>
+
+              <div className="flex-1 space-y-1.5 overflow-y-auto max-h-[340px] custom-scrollbar">
+                {stageBatches.length === 0 ? (
+                  <div className="py-6 text-center text-[11px] text-zinc-600 font-mono-data">
+                    Empty
+                  </div>
+                ) : (
+                  stageBatches.map((batch) => (
+                    <BatchFlightCard
+                      key={batch.id}
+                      batch={batch}
+                      selected={selectedBatchId === batch.id}
+                      onSelect={onSelect}
+                    />
+                  ))
                 )}
-                {warnCount > 0 && (
-                  <span className="rounded px-1 text-[9px] font-bold" style={{ background: "rgba(245,158,11,0.2)", color: "#fcd34d" }}>
-                    {warnCount}
-                  </span>
-                )}
-                <span className="text-[10px] text-slate-600">{inStage.length}</span>
               </div>
             </div>
-
-            {/* Batch cards */}
-            <div className="flex flex-col gap-1.5 p-2 flex-1">
-              {inStage.map((b) => (
-                <BatchCard key={b.id} batch={b} onSelect={onSelect} />
-              ))}
-              {inStage.length === 0 && (
-                <p className="py-3 text-center text-[10px] text-slate-700">Empty</p>
-              )}
-            </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }

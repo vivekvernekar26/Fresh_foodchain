@@ -69,9 +69,13 @@ temp/
 *.tsbuildinfo
 next-env.d.ts
 
-# ai assistants
+# ai assistants & internal notes
 CLAUDE.md
 AGENTS.md
+REDESIGN_PLAN.md
 .agents/
 .claude/
-
+.gemini/
+.cursor/
+.antigravity/
+SOLUTION.md

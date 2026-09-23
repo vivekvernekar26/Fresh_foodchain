@@ -5,25 +5,30 @@ interface Props {
   min: number;
   max: number;
   ideal: number;
-  color: string;
+  color?: string;
   label: string;
   unit: string;
   size?: number;
 }
 
 /**
- * Animated SVG arc gauge. The arc runs from 7 o'clock (225°) to 5 o'clock (315°,
- * i.e. 225+270=495° going clockwise), spanning 270° total — a standard gauge sweep.
- * An ideal-value notch is also drawn for reference.
+ * Minimalist dark telemetry gauge.
  */
-export default function SensorGauge({ value, min, max, ideal, color, label, unit, size = 80 }: Props) {
-  const R = 32;
-  const cx = 40;
-  const cy = 40;
-  const stroke = 5;
+export default function SensorGauge({
+  value,
+  min,
+  max,
+  ideal,
+  label,
+  unit,
+  size = 84,
+}: Props) {
+  const R = 30;
+  const cx = 42;
+  const cy = 42;
+  const stroke = 4.5;
 
-  // Arc helpers — angles in degrees from 12 o'clock, clockwise
-  const START_DEG = 135;  // 7 o'clock
+  const START_DEG = 135;
   const SWEEP_DEG = 270;
 
   function polarToXY(angleDeg: number, r: number) {
@@ -38,13 +43,13 @@ export default function SensorGauge({ value, min, max, ideal, color, label, unit
     return `M ${s.x} ${s.y} A ${r} ${r} 0 ${large} 1 ${e.x} ${e.y}`;
   }
 
-  const pct    = Math.max(0, Math.min(1, (value - min) / (max - min)));
+  const pct = Math.max(0, Math.min(1, (value - min) / (max - min)));
   const arcEnd = START_DEG + pct * SWEEP_DEG;
 
-  const idealPct    = Math.max(0, Math.min(1, (ideal - min) / (max - min)));
-  const idealAngle  = START_DEG + idealPct * SWEEP_DEG;
-  const idealInner  = polarToXY(idealAngle, R - stroke * 0.5 - 4);
-  const idealOuter  = polarToXY(idealAngle, R + stroke * 0.5 + 1);
+  const idealPct = Math.max(0, Math.min(1, (ideal - min) / (max - min)));
+  const idealAngle = START_DEG + idealPct * SWEEP_DEG;
+  const idealInner = polarToXY(idealAngle, R - stroke * 0.5 - 2);
+  const idealOuter = polarToXY(idealAngle, R + stroke * 0.5 + 2);
 
   const displayVal = value.toFixed(1);
 
@@ -53,70 +58,76 @@ export default function SensorGauge({ value, min, max, ideal, color, label, unit
       <svg
         width={size}
         height={size}
-        viewBox="0 0 80 80"
+        viewBox="0 0 84 84"
         style={{ overflow: "visible" }}
       >
-        {/* Track */}
+        {/* Inactive Track */}
         <path
           d={describeArc(START_DEG, START_DEG + SWEEP_DEG, R)}
           fill="none"
-          stroke="rgba(255,255,255,0.07)"
+          stroke="#27272a"
           strokeWidth={stroke}
           strokeLinecap="round"
         />
 
-        {/* Fill arc */}
+        {/* Active Arc Fill (Clean light zinc) */}
         {pct > 0 && (
           <path
             d={describeArc(START_DEG, arcEnd, R)}
             fill="none"
-            stroke={color}
+            stroke="#d4d4d8"
             strokeWidth={stroke}
             strokeLinecap="round"
-            style={{
-              filter: `drop-shadow(0 0 4px ${color}88)`,
-              transition: "d 0.5s ease",
-            }}
+            style={{ transition: "stroke-dashoffset 0.2s ease" }}
           />
         )}
 
-        {/* Ideal-value notch */}
+        {/* Ideal Marker */}
         <line
           x1={idealInner.x}
           y1={idealInner.y}
           x2={idealOuter.x}
           y2={idealOuter.y}
-          stroke="rgba(255,255,255,0.35)"
+          stroke="#71717a"
           strokeWidth={1.5}
           strokeLinecap="round"
         />
 
-        {/* Centre value */}
+        {/* Value Text */}
         <text
           x={cx}
-          y={cy + 2}
+          y={cy}
           textAnchor="middle"
-          dominantBaseline="middle"
-          fill={color}
-          fontSize="11"
-          fontWeight="700"
-          fontFamily="Inter, sans-serif"
+          dominantBaseline="central"
+          className="font-mono-data font-semibold text-zinc-100"
+          style={{
+            fontSize: displayVal.length > 4 ? "12px" : "13px",
+            fill: "#f4f4f5",
+          }}
         >
           {displayVal}
+          <tspan style={{ fontSize: "9px", fill: "#71717a", fontWeight: 400 }}>
+            {unit}
+          </tspan>
         </text>
+
+        {/* Label */}
         <text
           x={cx}
-          y={cy + 12}
+          y={cy + 13}
           textAnchor="middle"
-          dominantBaseline="middle"
-          fill="rgba(255,255,255,0.3)"
-          fontSize="7"
-          fontFamily="Inter, sans-serif"
+          dominantBaseline="central"
+          style={{
+            fontSize: "8px",
+            fill: "#71717a",
+            fontWeight: 500,
+            textTransform: "uppercase",
+            letterSpacing: "0.05em",
+          }}
         >
-          {unit}
+          {label}
         </text>
       </svg>
-      <span className="text-[10px] text-slate-500 text-center leading-tight">{label}</span>
     </div>
   );
 }

@@ -1,3 +1,5 @@
+"use client";
+
 const SPEEDS = [0.5, 1, 2, 4] as const;
 
 export default function Controls({
@@ -5,80 +7,77 @@ export default function Controls({
   setRunning,
   speed,
   setSpeed,
+  batchCount,
   onInjectAnomaly,
+  onAddBatch,
 }: {
   running: boolean;
   setRunning: (v: boolean) => void;
   speed: number;
   setSpeed: (v: number) => void;
+  batchCount: number;
   onInjectAnomaly: () => void;
+  onAddBatch: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      {/* Pause / Resume */}
-      <button
-        id="btn-pause-resume"
-        onClick={() => setRunning(!running)}
-        className="flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-200"
-        style={{
-          background: running
-            ? "rgba(255,255,255,0.08)"
-            : "rgba(16,185,129,0.18)",
-          border: `1px solid ${running ? "rgba(255,255,255,0.14)" : "rgba(16,185,129,0.45)"}`,
-          color: running ? "#cbd5e1" : "#34d399",
-        }}
-      >
-        {running ? (
-          <>
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-              <rect x="1" y="1" width="4" height="10" rx="1" />
-              <rect x="7" y="1" width="4" height="10" rx="1" />
-            </svg>
-            Pause
-          </>
-        ) : (
-          <>
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-              <polygon points="2,1 11,6 2,11" />
-            </svg>
-            Resume
-          </>
-        )}
-      </button>
-
-      {/* Speed pills */}
-      <div className="flex items-center gap-1 rounded-full p-1" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
-        <span className="px-2 text-xs text-slate-500">Speed</span>
-        {SPEEDS.map((s) => (
-          <button
-            key={s}
-            id={`btn-speed-${s}`}
-            onClick={() => setSpeed(s)}
-            className="rounded-full px-3 py-1 text-xs font-semibold transition-all duration-150"
-            style={{
-              background: speed === s ? "rgba(56,189,248,0.22)" : "transparent",
-              color: speed === s ? "#38bdf8" : "#64748b",
-              border: speed === s ? "1px solid rgba(56,189,248,0.4)" : "1px solid transparent",
-            }}
-          >
-            {s}×
-          </button>
-        ))}
+    <div className="flex flex-wrap items-center gap-2">
+      {/* Live Simulation Status */}
+      <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded bg-zinc-900 border border-zinc-800 text-xs">
+        <span className={`w-2 h-2 rounded-full ${running ? "bg-emerald-500" : "bg-zinc-500"}`} />
+        <span className="font-mono-data text-[11px] text-zinc-300">
+          {running ? "LIVE" : "PAUSED"}
+        </span>
+        <span className="text-[10px] font-mono-data px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400">
+          {batchCount} units
+        </span>
       </div>
+
+      {/* Speed Selector */}
+      <div className="flex items-center rounded bg-zinc-900 p-0.5 border border-zinc-800">
+        {SPEEDS.map((s) => {
+          const isActive = speed === s;
+          return (
+            <button
+              key={s}
+              id={`btn-speed-${s}`}
+              onClick={() => setSpeed(s)}
+              className={`px-2 py-1 text-xs font-mono-data font-medium rounded transition-colors ${
+                isActive
+                  ? "bg-zinc-800 text-zinc-100 font-semibold shadow-sm"
+                  : "text-zinc-400 hover:text-zinc-200"
+              }`}
+            >
+              {s}×
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Play/Pause Button */}
+      <button
+        id="btn-toggle-run"
+        onClick={() => setRunning(!running)}
+        className="px-3 py-1.5 rounded text-xs font-mono-data font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 transition-colors flex items-center gap-1.5"
+      >
+        <span>{running ? "⏸ Pause" : "▶ Resume"}</span>
+      </button>
 
       {/* Inject Anomaly */}
       <button
         id="btn-inject-anomaly"
         onClick={onInjectAnomaly}
-        className="flex items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-semibold transition-all duration-200 hover:scale-105 active:scale-95"
-        style={{
-          background: "rgba(239,68,68,0.18)",
-          border: "1px solid rgba(239,68,68,0.45)",
-          color: "#f87171",
-          animation: "pulseGlow 2.5s ease infinite",
-        }}
+        className="px-3 py-1.5 rounded text-xs font-mono-data font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition-colors flex items-center gap-1.5"
       >
-        ⚡ Inject Anomaly
+        <span>⚡ Simulate Incident</span>
+      </button>
+
+      {/* Add Custom Batch */}
+      <button
+        id="btn-add-batch"
+        onClick={onAddBatch}
+        className="px-3 py-1.5 rounded text-xs font-mono-data font-medium bg-zinc-100 text-zinc-900 hover:bg-zinc-200 transition-colors flex items-center gap-1"
+      >
+        <span>+ Dispatch Batch</span>
       </button>
     </div>
   );
